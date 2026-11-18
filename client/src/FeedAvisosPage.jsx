@@ -71,7 +71,8 @@ export function FeedAvisosPage() {
       }
     }
 
-    loadAvisos();
+    // loadAvisos captura sus propios errores; se marca como ignorada la promesa (SonarCloud S9383).
+    void loadAvisos();
 
     return () => {
       cancelled = true;
