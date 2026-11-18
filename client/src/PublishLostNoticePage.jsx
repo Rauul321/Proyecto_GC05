@@ -5,7 +5,8 @@ import { getAvisoOptions, publishAviso } from './api/avisos.js';
 const TEXT_MAX = 2000;
 const EMAIL_MAX = 254;
 const TELEFONO_PATTERN = /^(?:\+34)?[0-9]{9}$/;
-const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// Partes del dominio sin puntos: evita el backtracking super-lineal (SonarCloud S8786).
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@.]+(?:\.[^\s@.]+)+$/;
 
 export const AVISO_LEGAL = 'Este aviso no inicia una solicitud de recuperación ni implica que el objeto esté bajo custodia de la Universidad.';
 

@@ -151,6 +151,7 @@ it('AC-05/AC-08: valida los campos obligatorios y no envía un aviso incompleto'
 it.each([
   ['fecha futura', 'Fecha aproximada de la pérdida', '2999-01-01', 'La fecha no puede ser futura.'],
   ['correo no válido', 'Correo de contacto', 'correo-no-valido', 'El formato del correo de contacto no es válido.'],
+  ['correo con puntos seguidos en el dominio', 'Correo de contacto', 'contacto@example..com', 'El formato del correo de contacto no es válido.'],
   ['teléfono no válido', 'Teléfono de contacto', '12345', 'Introduce 9 cifras, con el prefijo +34 opcional.'],
 ])('AC-05: rechaza %s sin enviar nada', async (_, label, value, expected) => {
   const fetch = stubFetch();
