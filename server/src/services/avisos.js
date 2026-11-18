@@ -25,7 +25,7 @@ export function createAvisoService(storage) {
         if (value === undefined) return defaultValue;
 
         if (typeof value !== 'string' || !/^\d+$/.test(value)) {
-          return NaN;
+          return Number.NaN;
         }
 
         return Number(value);
