@@ -80,6 +80,39 @@ it('envía correctamente los parámetros de paginación', async () => {
   );
 });
 
+it('SCRUM-119: añade los filtros con contenido y omite los vacíos', async () => {
+  const fetch = vi.fn().mockResolvedValue({
+    ok: true,
+    json: async () => ({ avisos: [] }),
+  });
+
+  vi.stubGlobal('fetch', fetch);
+
+  await getAvisos(1, 12, { q: ' mochila azul ', categoriaId: 'cat-1', facultadId: '', centroId: undefined });
+
+  expect(fetch).toHaveBeenCalledWith(
+    '/api/avisos?pagina=1&tamano=12&q=mochila+azul&categoriaId=cat-1',
+    { credentials: 'same-origin' }
+  );
+});
+
+it('SCRUM-119: con un 400 del feed usa el mensaje del servidor', async () => {
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+    ok: false,
+    status: 400,
+    json: async () => ({
+      message: 'Revisa los filtros de búsqueda.',
+      errors: { categoriaId: 'Selecciona una categoría válida.' },
+    }),
+  }));
+
+  await expect(getAvisos(1, 12, { categoriaId: 'x' })).rejects.toMatchObject({
+    status: 400,
+    message: 'Revisa los filtros de búsqueda.',
+    errors: { categoriaId: 'Selecciona una categoría válida.' },
+  });
+});
+
 it('informa cuando la página solicitada no existe', async () => {
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
     ok: false,
