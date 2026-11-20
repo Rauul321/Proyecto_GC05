@@ -39,7 +39,8 @@ async function request(path, body) {
     const isFeed = path.startsWith('/api/avisos?');
 
     const feedMessages = {
-      400: 'Revisa los parámetros de paginación.',
+      // SCRUM-119: el servidor distingue paginación y filtros; se usa su mensaje si lo hay.
+      400: (typeof data?.message === 'string' && data.message) || 'Revisa los parámetros de la búsqueda.',
       401: 'Debes iniciar sesión para consultar los avisos.',
       404: 'La página solicitada no existe.',
       503: 'La consulta de avisos no está disponible en este momento.',
@@ -60,11 +61,17 @@ export const getAvisoOptions = () => request('/api/avisos/opciones');
 export const publishAviso = datos => request('/api/avisos', datos);
 
 // SCRUM-57 / US-014: consulta paginada del feed de avisos.
-export function getAvisos(pagina = 1, tamano = 12) {
+// SCRUM-119 / US-015: filtros opcionales { q, categoriaId, facultadId, centroId }; los vacíos no se envían.
+export function getAvisos(pagina = 1, tamano = 12, filtros = {}) {
   const params = new URLSearchParams({
     pagina: String(pagina),
     tamano: String(tamano),
   });
+
+  for (const key of ['q', 'categoriaId', 'facultadId', 'centroId']) {
+    const value = typeof filtros[key] === 'string' ? filtros[key].trim() : '';
+    if (value) params.set(key, value);
+  }
 
   return request(`/api/avisos?${params.toString()}`);
 }

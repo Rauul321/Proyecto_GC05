@@ -106,6 +106,19 @@ Publicar avisos de pérdida (US-013: SCRUM-109, API; SCRUM-52, formulario de Lui
   - `client/src/api/avisos.test.jsx`
   - `client/src/FeedAvisosPage.test.jsx`
 
+### Buscar y filtrar avisos de pérdida (US-015: SCRUM-119)
+
+- Amplía `GET /api/avisos` (US-014) con filtros opcionales, combinables entre sí y con la paginación:
+  - `q`: texto de hasta 100 caracteres. Se separa en palabras (como mucho 10) y cada una debe aparecer en algún campo público del aviso: descripción, categoría, facultad o centro. No distingue mayúsculas; `%`, `_` y `\` se buscan como texto literal.
+  - `categoriaId`, `facultadId` y `centroId`: UUID. Filtrar por facultad incluye los avisos de sus centros.
+  - Un parámetro vacío equivale a no filtrar.
+- Siempre devuelve solo avisos `Activos`. Nunca busca ni ordena por datos privados (`aviso_datos_privados`: rasgos y contacto) ni por el autor.
+- Sin coincidencias: 200 con `avisos: []` y el mensaje «No hay avisos activos que coincidan con la búsqueda.». Sin filtros, se mantiene el mensaje de US-014.
+- 400 con `errors[campo]` si un filtro no es un UUID, el texto supera 100 caracteres, un parámetro se repite o se envía uno desconocido. El mensaje es «Revisa los filtros de búsqueda.»; si solo falla la paginación, sigue siendo «Revisa los parámetros de paginación.».
+- Cliente: `getAvisos(pagina, tamano, { q, categoriaId, facultadId, centroId })` en `client/src/api/avisos.js`; los filtros vacíos no se envían.
+- Pantalla `#feed-avisos`: formulario «Buscar avisos» con texto, categoría, facultad y centro (solo los de la facultad elegida). Al buscar vuelve a la primera página; «Limpiar filtros» recupera el feed completo. Si no cargan los catálogos, se puede seguir buscando por texto. Los resultados no ofrecen ninguna acción de recuperación (US-015-AC-06).
+- Pruebas: las mismas cuatro de US-014, con los casos de búsqueda marcados como SCRUM-119 / US-015.
+
 Recuperación de contraseña (SCRUM-43, API; SCRUM-94, pantallas React):
 
 - Arrancar el buzón local con `docker compose up -d mail` y abrir `http://localhost:8025`. Solo captura correos de pruebas; no los entrega por Internet.

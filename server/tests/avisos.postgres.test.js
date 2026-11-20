@@ -222,6 +222,68 @@ test('SCRUM-109: publicación real de avisos, privacidad y transacciones Postgre
       assert.equal(Object.hasOwn(result.body, 'hallazgos'), false);
     });
 
+    // SCRUM-119 / US-015: búsqueda y filtros con PostgreSQL real.
+    const otherCategory = randomUUID();
+    await pool.query('INSERT INTO categorias (id, nombre) VALUES ($1, $2)', [otherCategory, 'Paraguas y llaves']);
+    const paraguas = (await publish({ ...valid(), categoriaId: otherCategory, facultadId: otherFaculty,
+      descripcion: 'Paraguas ROJO con mango de madera', rasgosPrivados: 'Brújula grabada en el mango' })).body.aviso.id;
+    const literal = (await publish({ ...valid(), descripcion: 'Etiqueta con el texto 100%_seguro' })).body.aviso.id;
+    const cerrado = (await publish({ ...valid(), categoriaId: otherCategory, facultadId: otherFaculty,
+      descripcion: 'Paraguas rojo ya devuelto' })).body.aviso.id;
+    await pool.query('UPDATE avisos SET estado = $1 WHERE id = $2', ['Cerrado', cerrado]);
+    const search = async (params) => {
+      const result = await agent.get(`/api/avisos?${new URLSearchParams({ tamano: '50', ...params })}`);
+      assert.equal(result.status, 200);
+      return result.body;
+    };
+    const ids = body => body.avisos.map(aviso => aviso.id);
+
+    await t.test('US-015-AC-01/AC-03: busca palabras sin distinguir mayúsculas y solo en avisos activos', async () => {
+      const body = await search({ q: 'paraguas rojo' });
+      assert.deepEqual(ids(body), [paraguas]);
+      assert.equal(ids(await search({ q: 'PARAGUAS' })).includes(cerrado), false);
+    });
+
+    await t.test('US-015-AC-01: busca también en los nombres públicos de categoría, facultad y centro', async () => {
+      assert.deepEqual(ids(await search({ q: 'llaves' })), [paraguas]);
+      assert.ok(ids(await search({ q: 'otra facultad' })).includes(paraguas));
+      const conCentro = await search({ q: 'centro ficticio' });
+      assert.ok(conCentro.avisos.length > 0);
+      assert.ok(conCentro.avisos.every(aviso => aviso.centro?.id === centre));
+    });
+
+    await t.test('US-015-AC-03: no busca en los rasgos privados ni en el contacto', async () => {
+      for (const q of ['brújula', 'privado@example.com', 'Rasgo privado del feed']) {
+        const body = await search({ q });
+        assert.deepEqual(body.avisos, []);
+        assert.equal(body.message, 'No hay avisos activos que coincidan con la búsqueda.');
+      }
+    });
+
+    await t.test('%, _ y \\ se buscan como texto literal', async () => {
+      assert.deepEqual(ids(await search({ q: '100%_seguro' })), [literal]);
+      assert.deepEqual(ids(await search({ q: '%' })), [literal]);
+      assert.deepEqual(ids(await search({ q: '\\' })), []);
+    });
+
+    await t.test('US-015-AC-02/AC-04: los filtros se combinan entre sí y con el texto', async () => {
+      assert.deepEqual(ids(await search({ categoriaId: otherCategory })), [paraguas]);
+      assert.deepEqual(ids(await search({ categoriaId: otherCategory, facultadId: otherFaculty, q: 'madera' })), [paraguas]);
+      assert.deepEqual(ids(await search({ categoriaId: otherCategory, facultadId: faculty })), []);
+      const porCentro = await search({ centroId: centre });
+      assert.ok(porCentro.avisos.length > 0);
+      assert.ok(porCentro.avisos.every(aviso => aviso.centro?.id === centre && aviso.estado === 'Activo'));
+      const porFacultad = await search({ facultadId: faculty });
+      assert.ok(porFacultad.avisos.every(aviso => aviso.facultad.id === faculty));
+      assert.equal(porFacultad.paginacion.total, porFacultad.avisos.length);
+    });
+
+    await t.test('una cadena SQL en el texto se trata como texto', async () => {
+      const body = await search({ q: "'; DROP TABLE avisos; --" });
+      assert.deepEqual(body.avisos, []);
+      assert.ok(await count('avisos') > 0);
+    });
+
     await t.test('informa cuando no quedan avisos activos', async () => {
       await pool.query(
         'UPDATE avisos SET estado = $1',

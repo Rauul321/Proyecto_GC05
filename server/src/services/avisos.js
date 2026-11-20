@@ -1,4 +1,4 @@
-import { validateAviso } from '../validation/avisos.js';
+import { validateAviso, validateBusquedaAvisos } from '../validation/avisos.js';
 
 export class AvisoError extends Error {
   constructor(status, message, errors) {
@@ -20,34 +20,19 @@ export function createAvisoService(storage) {
     },
 
     // SCRUM-57 / US-014: servicio de consulta del feed de avisos.
+    // SCRUM-119 / US-015: búsqueda por texto y filtros por categoría, facultad y centro.
     async listActive(query = {}) {
-      const parseInteger = (value, defaultValue) => {
-        if (value === undefined) return defaultValue;
-
-        if (typeof value !== 'string' || !/^\d+$/.test(value)) {
-          return NaN;
-        }
-
-        return Number(value);
-      };
-
-      const pagina = parseInteger(query.pagina, 1);
-      const tamano = parseInteger(query.tamano, 12);
-      const errors = {};
-
-      if (!Number.isSafeInteger(pagina) || pagina < 1) {
-        errors.pagina = 'La página debe ser un entero mayor o igual a 1.';
-      }
-
-      if (!Number.isSafeInteger(tamano) || tamano < 1 || tamano > 50) {
-        errors.tamano = 'El tamaño debe estar entre 1 y 50.';
-      }
+      const { errors, soloPaginacion, value } = validateBusquedaAvisos(query);
 
       if (Object.keys(errors).length) {
-        throw new AvisoError(400, 'Revisa los parámetros de paginación.', errors);
+        throw new AvisoError(400,
+          soloPaginacion ? 'Revisa los parámetros de paginación.' : 'Revisa los filtros de búsqueda.', errors);
       }
 
-      const { avisos, total } = await storage.listActive(pagina, tamano);
+      const { pagina, tamano, filtros } = value;
+      const conFiltros = filtros.terminos.length > 0 ||
+        Boolean(filtros.categoriaId || filtros.facultadId || filtros.centroId);
+      const { avisos, total } = await storage.listActive(pagina, tamano, filtros);
       const totalPaginas = Math.ceil(total / tamano);
 
       if (pagina > Math.max(1, totalPaginas)) {
@@ -84,7 +69,9 @@ export function createAvisoService(storage) {
           siguiente: pagina < totalPaginas,
         },
         ...(total === 0 && {
-          message: 'Todavía no hay avisos de pérdida activos.',
+          message: conFiltros
+            ? 'No hay avisos activos que coincidan con la búsqueda.'
+            : 'Todavía no hay avisos de pérdida activos.',
         }),
       };
     },
