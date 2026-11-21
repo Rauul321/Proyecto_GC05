@@ -24,15 +24,29 @@ export function createAvisoRepository(pool) {
     },
 
     // SCRUM-57 / US-014: consulta paginada de avisos activos.
-    async listActive(pagina = 1, tamano = 12) {
+    // SCRUM-119 / US-015: el texto se busca solo en campos públicos (descripción, categoría,
+    // facultad y centro), sin distinguir mayúsculas; nunca en aviso_datos_privados.
+    async listActive(pagina = 1, tamano = 12, filtros = {}) {
+      const { terminos = [], categoriaId = null, facultadId = null, centroId = null } = filtros;
       const offset = (pagina - 1) * tamano;
+      const params = ['Activo'];
+      const where = ['a.estado = $1'];
+      const add = (sql, value) => { params.push(value); where.push(sql.replace('?', `$${params.length}`)); };
+      // Cada palabra debe aparecer en algún campo público; %, _ y \ se buscan como texto literal.
+      for (const termino of terminos) {
+        add(`concat_ws(' ', a.descripcion, cat.nombre, f.nombre, c.nombre) ILIKE ?`,
+          `%${termino.replace(/[\\%_]/g, '\\$&')}%`);
+      }
+      if (categoriaId) add('a.categoria_id = ?::uuid', categoriaId);
+      if (facultadId) add('a.facultad_id = ?::uuid', facultadId);
+      if (centroId) add('a.centro_id = ?::uuid', centroId);
+      const from = `FROM avisos a
+        JOIN categorias cat ON cat.id = a.categoria_id
+        JOIN facultades f ON f.id = a.facultad_id
+        LEFT JOIN centros c ON c.id = a.centro_id
+        WHERE ${where.join(' AND ')}`;
 
-      const { rows } = await pool.query(
-        `SELECT COUNT(*)::int AS total
-        FROM avisos
-        WHERE estado = $1`,
-        ['Activo']
-      );
+      const { rows } = await pool.query(`SELECT COUNT(*)::int AS total ${from}`, params);
 
       const total = rows[0].total;
 
@@ -57,14 +71,10 @@ export function createAvisoRepository(pool) {
               'nombre', c.nombre
             )
           END AS centro
-        FROM avisos a
-        JOIN categorias cat ON cat.id = a.categoria_id
-        JOIN facultades f ON f.id = a.facultad_id
-        LEFT JOIN centros c ON c.id = a.centro_id
-        WHERE a.estado = $1
+        ${from}
         ORDER BY a.created_at DESC, a.id DESC
-        LIMIT $2 OFFSET $3`,
-        ['Activo', tamano, offset]
+        LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+        [...params, tamano, offset]
       );
 
       return { avisos, total };
