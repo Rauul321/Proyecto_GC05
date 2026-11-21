@@ -10,6 +10,7 @@ import { SearchFindingsPage } from './SearchFindingsPage.jsx';
 import { MyFindingsPage } from './MyFindingsPage.jsx';
 import { PublishLostNoticePage } from './PublishLostNoticePage.jsx';
 import { FeedAvisosPage } from './FeedAvisosPage.jsx';
+import { CloseNoticesPage } from './CloseNoticesPage.jsx';
 
 /** Navegación de registro, inicio de sesión, perfil y cierre de sesión. */
 export function App() {
@@ -118,6 +119,10 @@ export function App() {
     // SCRUM-57 / US-014: consultar el feed de avisos.
   if (hash === '#feed-avisos' && !demo) {
     return <FeedAvisosPage />;
+  }
+
+  if (hash === '#cerrar-avisos' && !demo) {
+    return <CloseNoticesPage />;
   }
 
   // Portada pública o pantalla del usuario autenticado.

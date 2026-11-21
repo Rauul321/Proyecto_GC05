@@ -1,3 +1,4 @@
+import validator from "validator";
 import { validateAviso, validateBusquedaAvisos } from '../validation/avisos.js';
 
 export class AvisoError extends Error {
@@ -74,6 +75,21 @@ export function createAvisoService(storage) {
             : 'Todavía no hay avisos de pérdida activos.',
         }),
       };
+    },
+
+    async listForClosure(userId) {
+      return { avisos: await storage.listForClosure(userId) };
+    },
+
+    async close(userId, id, body) {
+      if (!validator.isUUID(id)) throw new AvisoError(404, 'El aviso no existe.');
+
+      const motivo = typeof body?.motivo === 'string' ? body.motivo.trim() : '';
+      if (!motivo || motivo.length > 500) {
+        throw new AvisoError(400, 'Indica un motivo de cierre de entre 1 y 500 caracteres.');
+      }
+
+      return { aviso: await storage.close(userId, id, motivo) };
     },
 
     async publish(userId, body) {

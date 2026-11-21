@@ -285,6 +285,9 @@ export function createApp({
 
   // SCRUM-57 / US-014: feed paginado de avisos de pérdida activos.
   app.get('/api/avisos', authenticated, avisos.listActive);
+  app.get('/api/avisos/gestion-cierre', authenticated, avisos.listForClosure);
+  app.post('/api/avisos/:id/cierre', authenticated, requireSameOrigin,
+    requireJson, express.json({ limit: '4kb', strict: true }), avisos.close);
   
   app.use('/api', (_req, res) => {
     res.status(404).json({
