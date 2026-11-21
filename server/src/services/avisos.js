@@ -1,3 +1,4 @@
+import validator from 'validator';
 import { validateAviso, validateBusquedaAvisos } from '../validation/avisos.js';
 
 export class AvisoError extends Error {
@@ -74,6 +75,58 @@ export function createAvisoService(storage) {
             : 'Todavía no hay avisos de pérdida activos.',
         }),
       };
+    },
+
+    // SCRUM-122 / US-016: listado de los avisos propios, en cualquier estado.
+    async listOwn(userId) {
+      const avisos = await storage.listOwn(userId);
+      return {
+        avisos: avisos.map(aviso => ({
+          id: aviso.id,
+          descripcion: aviso.descripcion,
+          fechaPerdida: aviso.fechaPerdida,
+          estado: aviso.estado,
+          categoria: aviso.categoria,
+          facultad: aviso.facultad,
+          centro: aviso.centro ?? null,
+          publicadoEn: aviso.publicadoEn,
+          actualizadoEn: aviso.actualizadoEn,
+        })),
+      };
+    },
+
+    // SCRUM-122 / US-016: datos de un aviso propio para el formulario de edición, incluidos los privados.
+    async getOwn(userId, avisoId) {
+      if (!validator.isUUID(String(avisoId ?? ''))) throw new AvisoError(404, 'Aviso no encontrado.');
+      const aviso = await storage.getOwn(userId, avisoId);
+      if (!aviso) throw new AvisoError(404, 'Aviso no encontrado.');
+      return {
+        aviso: {
+          id: aviso.id,
+          categoriaId: aviso.categoriaId,
+          facultadId: aviso.facultadId,
+          centroId: aviso.centroId ?? null,
+          descripcion: aviso.descripcion,
+          fechaPerdida: aviso.fechaPerdida,
+          estado: aviso.estado,
+          rasgosPrivados: aviso.rasgosPrivados ?? null,
+          contactoEmail: aviso.contactoEmail ?? null,
+          contactoTelefono: aviso.contactoTelefono ?? null,
+          publicadoEn: aviso.publicadoEn,
+          actualizadoEn: aviso.actualizadoEn,
+          editable: aviso.estado === 'Activo',
+        },
+      };
+    },
+
+    // SCRUM-122 / US-016: sustituye los datos editables de un aviso propio y Activo.
+    // Mismas reglas que al publicar; autor, estado e id nunca se aceptan del cliente (US-016-AC-04).
+    async update(userId, avisoId, body) {
+      if (!validator.isUUID(String(avisoId ?? ''))) throw new AvisoError(404, 'Aviso no encontrado.');
+      const { errors, value } = validateAviso(body);
+      if (Object.keys(errors).length) throw new AvisoError(400, 'Revisa los datos del aviso.', errors);
+      await storage.update(userId, avisoId, value);
+      return { message: 'Aviso actualizado correctamente.', aviso: { id: avisoId, estado: 'Activo' } };
     },
 
     async publish(userId, body) {
