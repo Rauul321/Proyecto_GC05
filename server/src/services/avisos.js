@@ -77,6 +77,21 @@ export function createAvisoService(storage) {
       };
     },
 
+    async listForClosure(userId) {
+      return { avisos: await storage.listForClosure(userId) };
+    },
+
+    async close(userId, id, body) {
+      if (!validator.isUUID(id)) throw new AvisoError(404, 'El aviso no existe.');
+
+      const motivo = typeof body?.motivo === 'string' ? body.motivo.trim() : '';
+      if (!motivo || motivo.length > 500) {
+        throw new AvisoError(400, 'Indica un motivo de cierre de entre 1 y 500 caracteres.');
+      }
+
+      return { aviso: await storage.close(userId, id, motivo) };
+    },
+
     // SCRUM-122 / US-016: listado de los avisos propios, en cualquier estado.
     async listOwn(userId) {
       const avisos = await storage.listOwn(userId);

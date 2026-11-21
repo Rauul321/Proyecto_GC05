@@ -44,6 +44,7 @@ async function request(path, body, method = 'POST') {
   const data = await response.json().catch(() => null);
   if (!response.ok) {
     const isFeed = path.startsWith('/api/avisos?');
+    const isClosure = path.endsWith('/cierre') || path.endsWith('/gestion-cierre');
 
     const feedMessages = {
       // SCRUM-119: el servidor distingue paginación y filtros; se usa su mensaje si lo hay.
@@ -57,7 +58,8 @@ async function request(path, body, method = 'POST') {
 
     throw new AvisoApiError(
       response.status,
-      (isFeed ? feedMessages[response.status] : null) ||
+      (isClosure && typeof data?.message === 'string' ? data.message : null) ||
+        (isFeed ? feedMessages[response.status] : null) ||
         (isOwn ? ownMessages[response.status] : null) ||
         messages[response.status] ||
         'No se ha podido completar la operación.',
@@ -67,6 +69,9 @@ async function request(path, body, method = 'POST') {
   if (!data) throw new AvisoApiError(response.status, 'La respuesta del servidor no es válida.');
   return data;
 }
+export const getAvisosParaCerrar = () => request('/api/avisos/gestion-cierre');
+export const closeAviso = (id, motivo) => request(`/api/avisos/${encodeURIComponent(id)}/cierre`, { motivo });
+
 export const getAvisoOptions = () => request('/api/avisos/opciones');
 export const publishAviso = datos => request('/api/avisos', datos);
 

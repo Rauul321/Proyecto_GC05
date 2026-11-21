@@ -154,6 +154,9 @@ export function HomePage({
                   </a>
                 </p>
                 <p>
+                  <a href="#cerrar-avisos">Cerrar mis avisos</a>
+                </p>
+                <p>
                   <a href="#mis-avisos">
                     Mis avisos de pérdida
                   </a>

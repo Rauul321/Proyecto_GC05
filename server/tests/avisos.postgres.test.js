@@ -18,7 +18,7 @@ test('SCRUM-109: publicación real de avisos, privacidad y transacciones Postgre
   await admin.query(`CREATE SCHEMA "${schema}"`);
   const pool = new pg.Pool({ connectionString: process.env.TEST_DATABASE_URL, options: `-c search_path=${schema}` });
   try {
-    for (const name of ['001-usuarios.sql', '002-sesiones.sql', '003-perfil.sql', '007-hallazgos.sql', '009-avisos.sql', '009-avisos.sql']) {
+    for (const name of ['001-usuarios.sql', '002-sesiones.sql', '003-perfil.sql', '007-hallazgos.sql', '009-avisos.sql', '009-avisos.sql', '010-cierre-avisos.sql']) {
       await pool.query(await readFile(new URL(`../db/migrations/${name}`, import.meta.url), 'utf8'));
     }
     const [userId, faculty, otherFaculty, category, centre, inactiveCategory, inactiveCentre] = Array.from({ length: 7 }, () => randomUUID());
@@ -40,6 +40,42 @@ test('SCRUM-109: publicación real de avisos, privacidad y transacciones Postgre
       descripcion: 'Mochila ficticia perdida', fechaPerdida: '2026-01-15' });
     const publish = body => agent.post('/api/avisos').set('Origin', 'http://localhost:5173').send(body);
     const count = async table => Number((await pool.query(`SELECT count(*) AS n FROM ${table}`)).rows[0].n);
+
+    await t.test('cierre propio atómico, historial y retirada del feed', async () => {
+      const created = await publish({ ...valid(), descripcion: 'Aviso para cerrar' });
+      const { id } = created.body.aviso;
+      const otherId = randomUUID();
+      await pool.query(
+        'INSERT INTO usuarios (id, email, password_hash, nombre, apellidos) VALUES ($1, $2, $3, $4, $5)',
+        [otherId, 'otra-persona@example.com', password, 'Otra', 'Persona']
+      );
+      const other = request.agent(app);
+      assert.equal((await other.post('/api/auth/login')
+        .send({ email: 'otra-persona@example.com', password: 'Prueba1234' })).status, 200);
+      const close = (actor, motivo) => actor.post(`/api/avisos/${id}/cierre`)
+        .set('Origin', 'http://localhost:5173').send({ motivo });
+
+      const feed = () => agent.get('/api/avisos');
+      assert.ok((await feed()).body.avisos.some(aviso => aviso.id === id));
+      assert.equal((await close(other, 'Ajeno')).status, 404);
+      assert.deepEqual((await other.get('/api/avisos/gestion-cierre')).body.avisos, []);
+      const attempts = await Promise.all([
+        close(agent, 'Objeto recuperado'),
+        close(agent, 'Búsqueda cancelada'),
+      ]);
+      assert.deepEqual(attempts.map(result => result.status).sort(), [200, 409]);
+      const closed = attempts.find(result => result.status === 200).body.aviso;
+      assert.equal(closed.estado, 'Cerrado');
+      assert.ok(closed.cerradoEn);
+      assert.ok(!((await feed()).body.avisos.some(aviso => aviso.id === id)));
+      const history = (await agent.get('/api/avisos/gestion-cierre')).body.avisos.find(aviso => aviso.id === id);
+      assert.equal(history.motivoCierre, closed.motivoCierre);
+      assert.equal(history.cerradoEn, closed.cerradoEn);
+      const { rows } = await pool.query('SELECT cerrado_por FROM avisos WHERE id = $1', [id]);
+      assert.equal(rows[0].cerrado_por, userId);
+      assert.equal(await count('hallazgos'), 0);
+      await pool.query('DELETE FROM avisos WHERE id = $1', [id]);
+    });
 
     await t.test('opciones reales: solo catálogos activos y centros de facultades activas', async () => {
       const result = await agent.get('/api/avisos/opciones');

@@ -24,6 +24,7 @@ async function fixture({ login = true, unavailable = false } = {}) {
       facultades: [{ id: FACULTY, nombre: 'Facultad ficticia' }],
       centros: [{ id: CENTRO, nombre: 'Centro ficticio', facultadId: FACULTY, otro: 'secreto' }],
     })),
+    close: vi.fn(async (userId, id, motivo) => ({ id, estado: 'Cerrado', motivoCierre: motivo })),
     publish: vi.fn(async () => ({ id: ID, rasgos: 'secreto', email: user.email })),
     listActive: vi.fn(async () => ({
       avisos: [
@@ -429,6 +430,37 @@ describe('SCRUM-119 / US-015: búsqueda y filtros de avisos', () => {
 
     expect(result.status).toBe(400);
     expect(result.body.message).toBe('Revisa los parámetros de paginación.');
+  });
+});
+describe('SCRUM-62: API de cierre', () => {
+  const close = (agent, body, id = ID) => agent.post(`/api/avisos/${id}/cierre`)
+    .set('Origin', 'http://localhost:5173').send(body);
+
+  it('obtiene el autor de la sesión y normaliza el motivo', async () => {
+    const { agent, storage } = await fixture();
+    const result = await close(agent, { motivo: ' Objeto recuperado ', autorId: CATEGORY });
+    expect(result.status).toBe(200);
+    expect(result.body.aviso.estado).toBe('Cerrado');
+    expect(storage.close).toHaveBeenCalledWith(USER, ID, 'Objeto recuperado');
+  });
+
+  it('rechaza motivos vacíos, inválidos o demasiado largos y avisos con ID inválido', async () => {
+    const { agent, storage } = await fixture();
+    for (const motivo of [' ', 123, 'a'.repeat(501)]) {
+      expect((await close(agent, { motivo })).status).toBe(400);
+    }
+    expect((await close(agent, { motivo: 'Recuperado' }, 'invalido')).status).toBe(404);
+    expect(storage.close).not.toHaveBeenCalled();
+  });
+
+  it('exige sesión y origen permitido', async () => {
+    const anonymous = await fixture({ login: false });
+    expect((await close(anonymous.agent, { motivo: 'Recuperado' })).status).toBe(401);
+    const { agent, storage } = await fixture();
+    const result = await agent.post(`/api/avisos/${ID}/cierre`)
+      .set('Origin', 'https://example.org').send({ motivo: 'Recuperado' });
+    expect(result.status).toBe(403);
+    expect(storage.close).not.toHaveBeenCalled();
   });
 });
 

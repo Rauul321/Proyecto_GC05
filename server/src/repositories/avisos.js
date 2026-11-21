@@ -39,6 +39,8 @@ export function createAvisoRepository(pool) {
     const unmanaged = async () => { throw new AvisoError(503, 'La gestión de avisos no está disponible en este momento.'); };
     return {
       options: unavailable,
+      listForClosure: unavailable,
+      close: unavailable,
       publish: unavailable,
       listActive: async () => {
         throw new AvisoError(503, 'La consulta de avisos no está disponible en este momento.');
@@ -113,6 +115,34 @@ export function createAvisoRepository(pool) {
       );
 
       return { avisos, total };
+    },
+
+    async listForClosure(userId) {
+      const { rows } = await pool.query(
+        `SELECT id, descripcion, fecha_perdida::text AS "fechaPerdida", estado,
+                cerrado_en AS "cerradoEn", motivo_cierre AS "motivoCierre"
+         FROM avisos WHERE autor_id = $1 ORDER BY created_at DESC, id DESC`,
+        [userId]
+      );
+      return rows;
+    },
+
+    async close(userId, id, motivo) {
+      const { rows: [aviso] } = await pool.query(
+        `UPDATE avisos
+         SET estado = 'Cerrado', cerrado_en = CURRENT_TIMESTAMP,
+             cerrado_por = $1, motivo_cierre = $3
+         WHERE id = $2 AND autor_id = $1 AND estado = 'Activo'
+         RETURNING id, estado, cerrado_en AS "cerradoEn", motivo_cierre AS "motivoCierre"`,
+        [userId, id, motivo]
+      );
+      if (aviso) return aviso;
+
+      const { rowCount } = await pool.query(
+        'SELECT id FROM avisos WHERE id = $2 AND autor_id = $1', [userId, id]
+      );
+      if (!rowCount) throw new AvisoError(404, 'El aviso no existe.');
+      throw new AvisoError(409, 'El aviso ya está cerrado.');
     },
 
     async publish(userId, data) {
