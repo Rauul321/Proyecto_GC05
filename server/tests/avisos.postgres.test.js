@@ -284,6 +284,86 @@ test('SCRUM-109: publicación real de avisos, privacidad y transacciones Postgre
       assert.ok(await count('avisos') > 0);
     });
 
+    // SCRUM-122 / US-016: edición real de avisos propios.
+    const otherUser = randomUUID();
+    await pool.query('INSERT INTO usuarios (id, email, password_hash, nombre, apellidos) VALUES ($1, $2, $3, $4, $5)',
+      [otherUser, 'otra@example.com', password, 'Otra', 'Persona']);
+    const otherAgent = request.agent(app);
+    assert.equal((await otherAgent.post('/api/auth/login').send({ email: 'otra@example.com', password: 'Prueba1234' })).status, 200);
+    const editar = (who, id, body) => who.put(`/api/avisos/${id}`).set('Origin', 'http://localhost:5173').send(body);
+    const fila = async id => (await pool.query(
+      `SELECT a.autor_id, a.estado, a.categoria_id, a.facultad_id, a.centro_id, a.descripcion,
+              to_char(a.fecha_perdida, 'YYYY-MM-DD') AS fecha, a.created_at, a.updated_at,
+              p.rasgos, p.contacto_email, p.contacto_telefono
+         FROM avisos a LEFT JOIN aviso_datos_privados p ON p.aviso_id = a.id WHERE a.id = $1`, [id])).rows[0];
+    const propio = (await publish({ ...valid(), descripcion: 'Cartera para editar', rasgosPrivados: 'Foto dentro' })).body.aviso.id;
+
+    await t.test('US-016: el autor ve su aviso con los datos privados para editarlo', async () => {
+      const result = await agent.get(`/api/avisos/${propio}`);
+      assert.equal(result.status, 200);
+      assert.equal(result.body.aviso.descripcion, 'Cartera para editar');
+      assert.equal(result.body.aviso.rasgosPrivados, 'Foto dentro');
+      assert.equal(result.body.aviso.fechaPerdida, '2026-01-15');
+      assert.equal(result.body.aviso.editable, true);
+      assert.ok((await agent.get('/api/avisos/mios')).body.avisos.some(aviso => aviso.id === propio));
+    });
+
+    await t.test('US-016-AC-01/AC-02/AC-04: edita los campos y conserva autor, estado y fecha de publicación', async () => {
+      const before = await fila(propio);
+      const hallazgos = await count('hallazgos');
+      const result = await editar(agent, propio, { ...valid(), categoriaId: otherCategory, facultadId: null, centroId: centre,
+        descripcion: 'Cartera marrón editada', fechaPerdida: '2026-01-10', rasgosPrivados: 'Foto y carné',
+        contactoEmail: 'nuevo@example.com', contactoTelefono: '600111222' });
+      assert.equal(result.status, 200);
+      const after = await fila(propio);
+      assert.deepEqual(
+        { categoria: after.categoria_id, facultad: after.facultad_id, centro: after.centro_id, descripcion: after.descripcion,
+          fecha: after.fecha, rasgos: after.rasgos, email: after.contacto_email, telefono: after.contacto_telefono },
+        { categoria: otherCategory, facultad: faculty, centro: centre, descripcion: 'Cartera marrón editada',
+          fecha: '2026-01-10', rasgos: 'Foto y carné', email: 'nuevo@example.com', telefono: '600111222' });
+      assert.equal(after.autor_id, userId);
+      assert.equal(after.estado, 'Activo');
+      assert.deepEqual(after.created_at, before.created_at);
+      assert.ok(after.updated_at >= before.updated_at);
+      assert.equal(await count('hallazgos'), hallazgos); // US-016-AC-06
+    });
+
+    await t.test('borrar todos los datos privados elimina su fila, sin dejarla vacía', async () => {
+      const result = await editar(agent, propio, { ...valid(), descripcion: 'Cartera sin datos privados',
+        rasgosPrivados: '', contactoEmail: null, contactoTelefono: '' });
+      assert.equal(result.status, 200);
+      const { rowCount } = await pool.query('SELECT 1 FROM aviso_datos_privados WHERE aviso_id = $1', [propio]);
+      assert.equal(rowCount, 0);
+    });
+
+    await t.test('US-016-AC-05: otra persona no puede ver ni editar el aviso', async () => {
+      const before = await fila(propio);
+      assert.equal((await otherAgent.get(`/api/avisos/${propio}`)).status, 404);
+      const result = await editar(otherAgent, propio, { ...valid(), descripcion: 'Intento ajeno' });
+      assert.equal(result.status, 404);
+      assert.deepEqual(await fila(propio), before);
+      assert.equal((await otherAgent.get('/api/avisos/mios')).body.avisos.some(aviso => aviso.id === propio), false);
+    });
+
+    await t.test('US-016-AC-03: datos o catálogos no válidos no cambian nada', async () => {
+      const before = await fila(propio);
+      assert.equal((await editar(agent, propio, { ...valid(), categoriaId: inactiveCategory })).status, 400);
+      assert.equal((await editar(agent, propio, { ...valid(), facultadId: otherFaculty, centroId: centre })).status, 400);
+      assert.equal((await editar(agent, propio, { ...valid(), descripcion: '' })).status, 400);
+      assert.deepEqual(await fila(propio), before);
+    });
+
+    await t.test('US-016-AC-01: un aviso cerrado no se puede editar, pero su autor lo sigue viendo', async () => {
+      await pool.query('UPDATE avisos SET estado = $1 WHERE id = $2', ['Cerrado', propio]);
+      const before = await fila(propio);
+      const result = await editar(agent, propio, { ...valid(), descripcion: 'Editar cerrado' });
+      assert.equal(result.status, 409);
+      assert.deepEqual(await fila(propio), before);
+      const detalle = await agent.get(`/api/avisos/${propio}`);
+      assert.equal(detalle.status, 200);
+      assert.equal(detalle.body.aviso.editable, false);
+    });
+
     await t.test('informa cuando no quedan avisos activos', async () => {
       await pool.query(
         'UPDATE avisos SET estado = $1',
