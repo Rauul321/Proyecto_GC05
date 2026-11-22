@@ -142,3 +142,15 @@ Recuperación de contraseña (SCRUM-43, API; SCRUM-94, pantallas React):
 - Desde el inicio de sesión, pulsar «He olvidado mi contraseña», solicitar el enlace y abrirlo en Mailpit. El enlace `/#restablecer-contrasena?token=...` abre el formulario de nueva contraseña. Tras completar el cambio se elimina el token de la URL y se vuelve al inicio de sesión, sin autenticar automáticamente.
 - Al abrirlo se comprueba su vigencia con `POST /api/auth/validate-reset-token`, JSON `{ "token": "token-del-correo" }`. Si ha caducado, se ha sustituido o se ha usado, se muestra «Enlace expirado o no válido» sin mostrar el formulario. Esta consulta no consume el enlace; al guardar la contraseña se vuelve a validar dentro de la transacción.
 - La prueba `server/tests/recovery.postgres.test.js` verifica el servidor con PostgreSQL y un buzón SMTP efímero, sin necesitar Docker ni enviar mensajes reales. Las pruebas de `client/src/RecoveryForms.test.jsx` verifican las pantallas y el contrato HTTP.
+
+### Crear solicitudes de recuperación (US-018 / SCRUM-64)
+
+Aplica la migración `011-solicitudes-recuperacion.sql` con `npm.cmd run db:migrate`.
+El formulario de SCRUM-127 puede enviar `POST /api/hallazgos/:id/solicitudes` con
+la cookie de sesión y un JSON `{ "justificacion": "..." }`. Se requiere una
+cuenta de Usuario y una justificación de entre 1 y 2000 caracteres. La API
+responde con `201` y `{ solicitud: { id, hallazgoId, estado, creadaEn } }`.
+El estado inicial es `Pendiente`. Un hallazgo inexistente devuelve `404`.
+Un hallazgo inactivo o una solicitud pendiente duplicada devuelve `409`.
+La justificación queda almacenada de forma privada y no se incluye en la
+respuesta ni en el listado público de hallazgos.
