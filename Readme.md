@@ -154,3 +154,11 @@ El estado inicial es `Pendiente`. Un hallazgo inexistente devuelve `404`.
 Un hallazgo inactivo o una solicitud pendiente duplicada devuelve `409`.
 La justificación queda almacenada de forma privada y no se incluye en la
 respuesta ni en el listado público de hallazgos.
+
+Formulario de solicitud (US-018 / SCRUM-127):
+
+- En `#buscar-hallazgos`, cada resultado `Activo` tiene el botón «Solicitar recuperación». Abre el formulario encima de los resultados, que siguen visibles.
+- El formulario identifica el hallazgo (descripción, categoría, facultad y fecha) y pide la «Justificación de propiedad»: obligatoria, de hasta 2000 caracteres, con contador. Explica que solo la verán el usuario y el Conserje de la facultad del hallazgo, y que enviar la solicitud no reserva el objeto ni lo retira del listado.
+- Valida antes de enviar y no envía dos veces. Con 201 muestra «Solicitud enviada. Estado: Pendiente.»; con 400 muestra el error junto al campo; con 409 muestra el motivo que da el servidor (hallazgo ya no activo o solicitud pendiente duplicada); con 401 ofrece iniciar sesión.
+- Módulo HTTP: `createSolicitud(hallazgoId, justificacion)` en `client/src/api/solicitudes.js`. Solo envía la justificación; nunca el solicitante ni el estado.
+- Pruebas: `client/src/api/solicitudes.test.jsx`, `client/src/RecoveryRequestForm.test.jsx` y los casos SCRUM-127 de `client/src/SearchFindingsPage.test.jsx`.
