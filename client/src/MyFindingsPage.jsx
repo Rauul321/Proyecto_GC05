@@ -162,7 +162,8 @@ export function MyFindingsPage() {
       setErrors({ motivo: `No puede superar los ${TEXT_MAX} caracteres.` });
       return;
     }
-    run(() => changeMyHallazgoState(selected.id, mode, motivo.trim()), STATE_ACTIONS[mode].done);
+    // run captura sus propios errores; se marca como ignorada la promesa (SonarCloud S9383).
+    void run(() => changeMyHallazgoState(selected.id, mode, motivo.trim()), STATE_ACTIONS[mode].done);
   }
 
   const feedbackLine = <p ref={feedback} role="status" aria-live="polite" tabIndex="-1" className={message.ok ? 'success' : 'error'}>{message.text}</p>;
