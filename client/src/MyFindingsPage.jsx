@@ -152,7 +152,8 @@ export function MyFindingsPage() {
       setMessage({ text: 'No has cambiado ningún dato.', ok: false });
       return;
     }
-    run(() => updateMyHallazgo(selected.id, cambios), 'Hallazgo actualizado correctamente.');
+    // run captura sus propios errores; se marca como ignorada la promesa (SonarCloud S9383).
+    void run(() => updateMyHallazgo(selected.id, cambios), 'Hallazgo actualizado correctamente.');
   }
 
   function saveState(event) {
